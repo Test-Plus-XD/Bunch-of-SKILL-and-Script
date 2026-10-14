@@ -1,40 +1,59 @@
 ---
 name: organise-fieldwork-photos
-description: Organise fieldwork images in the Mobile Devices folder into user-numbered, time-ordered batches without opening or analysing image content.
+description: Organise fieldwork photos in the Mobile Devices folder into time-ordered folders named after a user-supplied list of Store Codes (or numbered folders when none are given), without inspecting image content. Use whenever the user asks to organise or sort fieldwork photos, mentions the Mobile Devices folder, or gives Store Codes or a folder count.
 ---
 
 # Organise fieldwork photos
 
-Use this skill when the user wants photos from `C:\Users\Test-Plus\Downloads\Mobile Devices` organised into a specified number of numbered folders after fieldwork.
+Applies to `C:\Users\Test-Plus\Downloads\Mobile Devices` (the root). The user normally supplies Store Codes in time order: the first code is the earliest folder, the second the next, and so on.
 
-## Requirements
+## Inputs
 
-- Never open, preview, classify, OCR, or otherwise inspect image content. Use filenames and filesystem metadata only.
-- Treat image extensions case-insensitively, including JPG/JPEG, PNG, HEIC/HEIF, TIFF, BMP, and WEBP. Include only recognised image files.
-- Expect loose image files directly in the Mobile Devices root by default. If images are in unorganised source subfolders, include those too. Do not treat existing numbered output folders as source folders or recursively reprocess an already organised result unless the user explicitly asks to reorganise it.
-- When this skill is active and the user provides only an integer in the photo-organising context, treat it as the requested number of output folders. Do not ask them to restate the task or provide the folder count again.
-- Parse capture time from filenames matching `YYYYMMDD_HHMMSS` before the extension. Interpret this filename timestamp as Hong Kong local time. Do not substitute file modified/created time or image EXIF metadata.
-- Create folders named `1` through the requested number directly under the Mobile Devices root. Ignore source subfolder names when forming groups; their labels are not authoritative for the new numbering.
-- Group photos in timestamp order into that many contiguous batches. Use gaps of about ten minutes as useful boundary cues, favouring longer pauses when choosing boundaries. Keep all photos with the same timestamp together. The user may provide timestamp-to-folder anchors; honour those anchors while making the remaining assignments chronologically. Folder 1 starts with the earliest included timestamp.
-- Use best judgement to form the requested number of chronological groups when gap lengths are uneven. Do not pause just because boundaries are approximate or some photos are abnormal. Continue organising valid, parseable photos, then report abnormalities. Pause only for a genuine blocker such as an impossible folder count or a destination collision that risks overwriting existing files.
-- Find the majority capture date from valid filename timestamps. Organise the majority-date photos into the numbered batches. Flag other-date images after the organisation and leave them in their current locations unless the user specifies another destination.
-- Leave images with unparseable filenames where they are and report them after organising the valid photos.
+- **Store Codes**: a time-ordered list separated by line breaks, commas or spaces. Keep each code as typed, including capitalisation, and never reorder the list. Codes contain no spaces, so whitespace between a prefix (`SEHK`, `WEHK`, `MNHK`, any case) and its digits is a typo: join them (`WEHK 517` becomes `WEHK517`).
+- **Folder count `N`**: the stated count, else the number of Store Codes after joining. A bare integer reply is always the folder count; do not ask the user to repeat it. With neither codes nor a count, ask for the count. With no codes, name the folders `1` to `N`; every other rule still applies.
+- If a stated count differs from the number of Store Codes, pause before moving anything and ask which is correct. If the count stands, ask for the corrected list; never invent or drop codes.
+- **Anchors** (optional): "WEHK517 starts at 11:20" or "folder 3 starts at 11:20" makes that folder begin with the first photo at or after that time, so the gap before it is a pinned boundary.
+
+## Rules
+
+- Use filenames only: never open, preview, classify, OCR or analyse image content, and never use EXIF or filesystem dates.
+- Eligible files are `jpg`, `jpeg`and `png` (any case) in the root or any non-output subfolder. Leave other files alone.
+- Skip existing output folders (named with digits only, in Store Code format, or after a supplied code) and everything inside them, and name them in the summary. Reprocess one only if explicitly asked.
+- A capture time is a valid `YYYYMMDD_HHMMSS` (real date and time) just before the extension, read as Hong Kong local time.
+- Organise only the most common date. Leave other-date and unparseable images where they are and report them.
+- Continue despite these abnormalities. Pause only for a missing, impossible or conflicting folder count, an invalid or conflicting folder name, a tied date, contradictory anchors, or a filename collision.
+- Create `N` folders directly in the root, the `k`-th named after the `k`-th code (or `k`). Ignore source-folder labels. Move files without renaming; never overwrite, replace or merge; check filename collisions first.
+
+## Boundary selection
+
+Group by timestamp gaps, never by spreading photo counts evenly. Groups are contiguous in time, the first folder holds the earliest photos, and a folder may hold one photo. `N` folders need exactly `N-1` boundaries, chosen deterministically so the same photos always give the same split.
+
+1. Sort the distinct timestamps (identical ones stay together) and measure each consecutive gap.
+2. Pin anchored boundaries first. They split the day into stretches (with no anchors, the whole day is one stretch), each needing one boundary fewer than the folders it holds. Fill each stretch with the largest gaps inside it, breaking ties by choosing the earlier gap.
+3. If a stretch has too few gaps, or anchors contradict each other, the count is impossible: pause and report how many groups are possible.
+4. Flag every chosen unanchored gap under ten minutes as approximate, with its length.
+5. Report every unchosen gap of ten minutes or more, with its time range: `N` may be too small, or a long pause may sit inside one visit.
+
+## Store Code rules
+
+Validate the whole list (or the names `1` to `N`) before moving any file. If a check fails, pause, name the offender and change nothing.
+
+- Expected format: `SEHK`, `WEHK` or `MNHK` (any case) plus 3 or 4 digits, no spaces (`SEHK0877`, `WEHK517`). A code that does not match is still accepted, but flag it in the summary in case it is a typo.
+- No two names may match, ignoring case (Windows treats `A01` and `a01` as one folder). A store visited twice therefore needs a different second name: ask what to call it.
+- No name may match an existing file or folder in the root: ask whether to reorganise that folder or name the new one differently.
 
 ## Workflow
 
-1. Inspect image filenames directly in the Mobile Devices root. Also inspect unorganised source subfolders when present, but exclude numbered output folders and their contents. Identify any existing numbered folders that could conflict. Do not enumerate or read image pixels.
-2. Build a timestamp-sorted inventory from filenames. Determine the majority date, earliest and latest timestamps, and a practical set of batch boundaries guided by pauses near ten minutes. Keep a brief internal list of out-of-day, unparseable, and ambiguous files for the completion report.
-3. Check for destination filename collisions and whether numbered folders already contain files. Never overwrite, replace, or merge with pre-existing numbered-folder contents. If an actual collision or already organised result makes the requested move unsafe or ambiguous, report that blocker before moving files. Ordinary out-of-day or unparseable images are not blockers.
-4. Create folders `1` through `N` and move the majority-date, parseable images into the contiguous batches, preserving original filenames. Do not rename photos or retain source subfolder labels in the grouping logic. If timing does not yield clean boundaries, use the closest reasonable chronological split and continue.
-5. Confirm completion by listing each numbered folder's file count and timestamp range. Then report out-of-day images, unparseable filenames, approximate or uneven boundaries, and any move failures. Abnormalities should normally appear after the completed organisation summary, not interrupt it.
+1. Inventory eligible filenames and output folders; parse and validate the codes and count.
+2. Sort the timestamps, pick the date and choose the boundaries.
+3. Check destinations and collisions, create the `N` folders, then move the chosen date's files.
+4. Confirm each folder's count and time range. Summarise the folders from first to last in a table or list, each with its name, photo count and earliest to latest capture time (one time for a single photo). Then report corrected or unusual codes, skipped output folders, other-date files, unparseable names, approximate boundaries (anchors can fix these), unchosen gaps of ten minutes or more, and move failures.
+
+Perform the filename analysis, boundary decisions and file moves directly with available tools by default. Use `C:\Users\Test-Plus\Documents\DFI\Organise-FieldworkPhotos.ps1` only when the user explicitly asks to use the script.
 
 ## Examples
 
-- **Loose files at the root:** `20260930_090751.jpg`, `20260930_090851.png`, and `20260930_092108.jpg` are inventoried by their filename timestamps, regardless of extension. No source folder names are needed to sort or group them.
-- **Calculating a time gap:** `20260930_101900.jpg` encodes 10:19:00 and `20260930_103005.png` encodes 10:30:05. The gap is 11 minutes and 5 seconds, so it is a plausible boundary between batches. The filename pattern is `YYYYMMDD_HHMMSS`; compare the date and time portion before the extension.
-- **A shorter gap:** `20260930_101900.jpg` followed by `20260930_102325.jpg` is a 4-minute-25-second gap. This is usually evidence to keep the images in the same time cluster, unless the requested number of folders or the full day's sequence calls for a nearby split.
-- **Choosing among several pauses:** If gaps are 3, 9, 14, and 28 minutes, prefer the 14- and 28-minute pauses as candidate boundaries before the 9-minute pause. Use enough boundaries to make the requested number of groups while preserving chronological order.
-- **Date outlier:** If most filenames begin `20260930_` but one begins `20261001_`, organise the 30 September photos first, then report the 1 October image and leave it where it is.
-- **Unparseable filename:** A file named `IMG_0042.jpg` has no timestamp in the expected pattern. Organise the valid timestamped photos first, then report `IMG_0042.jpg` and leave it where it is.
-- **Bare folder count:** If the user invokes this workflow and replies `13`, treat that as a request for folders `1` through `13`. Do not ask what the number means.
-- **Already organised files:** If the root contains numbered folders `1`, `2`, and so on with photos inside, do not treat those contents as fresh loose-photo input. Report that the folder looks organised already and ask whether the user wants to reorganise it.
+- If the user supplies `SEHK0877`, `WEHK517`, `MNHK0123` and no count, create three folders with those names, in that order, from earliest to latest photos.
+- Gaps of 2, 3, 9, 14, 4, 28 and 6 minutes: `N` = 4 chooses 28, 14 and 9 (flag the 9 as approximate); `N` = 3 chooses 28 and 14 (the 9 is not reported); `N` = 2 chooses 28 and reports the unchosen 14.
+- `N` = 4 with "folder 3 starts at 10:30": the gap before the first photo at or after 10:30 is boundary 2; boundary 1 is the largest gap before it and boundary 3 the largest after it.
+- Most names begin `20260930_`, one begins `20261001_` and one is `IMG_0042.jpg`: organise 30 September and report the other two.
